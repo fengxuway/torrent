@@ -158,6 +158,7 @@ func exitSignalHandlers(client *torrent.Client) {
 	for {
 		log.Printf("close signal received: %+v", <-c)
 		client.Close()
+		os.Exit(0)
 	}
 }
 
