@@ -192,6 +192,8 @@ func main() {
 		clientConfig.DownloadRateLimiter = rate.NewLimiter(rate.Limit(flags.DownloadRate), 1<<20)
 	}
 
+	// close ipv6
+	clientConfig.DisableIPv6 = true
 	client, err := torrent.NewClient(clientConfig)
 	if err != nil {
 		log.Fatalf("error creating client: %s", err)
