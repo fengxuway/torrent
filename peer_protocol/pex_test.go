@@ -3,7 +3,7 @@ package peer_protocol
 import (
 	"testing"
 
-	"github.com/anacrolix/torrent/bencode"
+	"github.com/fengxuway/torrent/bencode"
 	"github.com/stretchr/testify/require"
 )
 

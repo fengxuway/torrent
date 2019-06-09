@@ -1,8 +1,8 @@
 package torrent
 
 import (
-	"github.com/anacrolix/torrent/metainfo"
-	"github.com/anacrolix/torrent/storage"
+	"github.com/fengxuway/torrent/metainfo"
+	"github.com/fengxuway/torrent/storage"
 )
 
 // Specifies a new torrent for adding to a client. There are helpers for

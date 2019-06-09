@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/anacrolix/tagflag"
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/fengxuway/torrent/bencode"
+	"github.com/fengxuway/torrent/metainfo"
 )
 
 var (
@@ -29,21 +29,13 @@ func main() {
 	}
 	tagflag.Parse(&args, tagflag.Description("Creates a torrent metainfo for the file system rooted at ROOT, and outputs it to stdout."))
 	mi := metainfo.MetaInfo{
-		AnnounceList: builtinAnnounceList,
-	}
-	if args.EmptyAnnounceList {
-		mi.AnnounceList = make([][]string, 0)
+		AnnounceList: make([][]string, 0),
 	}
 	for _, a := range args.AnnounceList {
 		mi.AnnounceList = append(mi.AnnounceList, []string{a})
 	}
 	mi.SetDefaults()
-	if len(args.Comment) > 0 {
-		mi.Comment = args.Comment
-	}
-	if len(args.CreatedBy) > 0 {
-		mi.CreatedBy = args.CreatedBy
-	}
+
 	info := metainfo.Info{
 		PieceLength: 256 * 1024,
 	}

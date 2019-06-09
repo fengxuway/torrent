@@ -10,8 +10,8 @@ import (
 	"github.com/anacrolix/missinggo"
 	"github.com/anacrolix/missinggo/conntrack"
 	"github.com/anacrolix/missinggo/expect"
-	"github.com/anacrolix/torrent/iplist"
-	"github.com/anacrolix/torrent/storage"
+	"github.com/fengxuway/torrent/iplist"
+	"github.com/fengxuway/torrent/storage"
 	"golang.org/x/time/rate"
 )
 

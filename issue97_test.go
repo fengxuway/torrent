@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/anacrolix/torrent/internal/testutil"
-	"github.com/anacrolix/torrent/storage"
+	"github.com/fengxuway/torrent/internal/testutil"
+	"github.com/fengxuway/torrent/storage"
 	"github.com/stretchr/testify/require"
 )
 
