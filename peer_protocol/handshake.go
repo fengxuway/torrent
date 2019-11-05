@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/anacrolix/missinggo"
-	"github.com/fengxuway/torrent/metainfo"
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 type ExtensionBit uint

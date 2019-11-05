@@ -5,7 +5,7 @@ import (
 
 	"bazil.org/fuse"
 	fusefs "bazil.org/fuse/fs"
-	"github.com/fengxuway/torrent"
+	"github.com/anacrolix/torrent"
 )
 
 type fileNode struct {

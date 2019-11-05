@@ -4,7 +4,7 @@ import (
 	"path"
 
 	"github.com/anacrolix/missinggo/resource"
-	"github.com/fengxuway/torrent/metainfo"
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 type piecePerResource struct {

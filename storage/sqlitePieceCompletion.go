@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"path/filepath"
 
-	"github.com/fengxuway/torrent/metainfo"
+	"github.com/anacrolix/torrent/metainfo"
 	_ "github.com/mattn/go-sqlite3"
 )
 

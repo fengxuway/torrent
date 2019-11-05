@@ -9,7 +9,7 @@ import (
 )
 
 func addPortMapping(d upnp.Device, proto upnp.Protocol, internalPort int, debug bool) {
-	externalPort, err := d.AddPortMapping(proto, internalPort, internalPort, "fengxuway/torrent", 0)
+	externalPort, err := d.AddPortMapping(proto, internalPort, internalPort, "anacrolix/torrent", 0)
 	if err != nil {
 		log.Printf("error adding %s port mapping: %s", proto, err)
 	} else if externalPort != internalPort {

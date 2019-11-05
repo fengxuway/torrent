@@ -3,7 +3,7 @@ package storage
 import (
 	"testing"
 
-	"github.com/fengxuway/torrent/metainfo"
+	"github.com/anacrolix/torrent/metainfo"
 	"github.com/stretchr/testify/assert"
 )
 

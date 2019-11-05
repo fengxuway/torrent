@@ -10,7 +10,7 @@ import (
 
 	"github.com/anacrolix/dht/krpc"
 	"github.com/anacrolix/missinggo"
-	"github.com/fengxuway/torrent/tracker"
+	"github.com/anacrolix/torrent/tracker"
 )
 
 // Announces a torrent to a tracker at regular intervals, when peers are

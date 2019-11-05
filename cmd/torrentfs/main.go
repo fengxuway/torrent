@@ -17,9 +17,9 @@ import (
 	fusefs "bazil.org/fuse/fs"
 	_ "github.com/anacrolix/envpprof"
 	"github.com/anacrolix/tagflag"
-	"github.com/fengxuway/torrent"
-	"github.com/fengxuway/torrent/fs"
-	"github.com/fengxuway/torrent/util/dirwatch"
+	"github.com/anacrolix/torrent"
+	"github.com/anacrolix/torrent/fs"
+	"github.com/anacrolix/torrent/util/dirwatch"
 )
 
 var (

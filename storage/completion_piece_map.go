@@ -3,7 +3,7 @@ package storage
 import (
 	"sync"
 
-	"github.com/fengxuway/torrent/metainfo"
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 type mapPieceCompletion struct {

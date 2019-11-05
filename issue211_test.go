@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/fengxuway/torrent/internal/testutil"
-	"github.com/fengxuway/torrent/storage"
+	"github.com/anacrolix/torrent/internal/testutil"
+	"github.com/anacrolix/torrent/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"

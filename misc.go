@@ -5,8 +5,8 @@ import (
 	"net"
 
 	"github.com/anacrolix/missinggo"
-	"github.com/fengxuway/torrent/metainfo"
-	pp "github.com/fengxuway/torrent/peer_protocol"
+	"github.com/anacrolix/torrent/metainfo"
+	pp "github.com/anacrolix/torrent/peer_protocol"
 	"golang.org/x/time/rate"
 )
 
