@@ -5,11 +5,12 @@ import (
 	"os"
 
 	"github.com/anacrolix/tagflag"
+
 	"github.com/anacrolix/torrent/metainfo"
 )
 
 func main() {
-	tagflag.Parse(nil)
+	tagflag.Parse(nil, tagflag.Description("reads a torrent file from stdin and writes out its magnet link to stdout"))
 
 	mi, err := metainfo.Load(os.Stdin)
 	if err != nil {

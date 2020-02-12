@@ -8,14 +8,15 @@ import (
 	"testing"
 
 	"github.com/anacrolix/missinggo"
+	"github.com/bradfitz/iter"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/internal/testutil"
 	"github.com/anacrolix/torrent/metainfo"
 	pp "github.com/anacrolix/torrent/peer_protocol"
 	"github.com/anacrolix/torrent/storage"
-	"github.com/bradfitz/iter"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func r(i, b, l pp.Integer) request {
@@ -79,7 +80,7 @@ func BenchmarkUpdatePiecePriorities(b *testing.B) {
 		numPieces   = 13410
 		pieceLength = 256 << 10
 	)
-	cl := &Client{config: &ClientConfig{}}
+	cl := &Client{config: TestingConfig()}
 	cl.initLogger()
 	t := cl.newTorrent(metainfo.Hash{}, nil)
 	require.NoError(b, t.setInfo(&metainfo.Info{
@@ -95,7 +96,7 @@ func BenchmarkUpdatePiecePriorities(b *testing.B) {
 	}
 	assert.Len(b, t.readers, 7)
 	for i := 0; i < int(t.numPieces()); i += 3 {
-		t.completedPieces.Set(i, true)
+		t._completedPieces.Set(i, true)
 	}
 	t.DownloadPieces(0, t.numPieces())
 	for range iter.N(b.N) {
@@ -148,15 +149,15 @@ func TestEmptyFilesAndZeroPieceLengthWithMMapStorage(t *testing.T) {
 func TestPieceHashFailed(t *testing.T) {
 	mi := testutil.GreetingMetaInfo()
 	cl := new(Client)
-	cl.config = &ClientConfig{}
+	cl.config = TestingConfig()
 	cl.initLogger()
 	tt := cl.newTorrent(mi.HashInfoBytes(), badStorage{})
 	tt.setChunkSize(2)
 	require.NoError(t, tt.setInfoBytes(mi.InfoBytes))
 	tt.cl.lock()
-	tt.pieces[1].dirtyChunks.AddRange(0, 3)
+	tt.pieces[1]._dirtyChunks.AddRange(0, 3)
 	require.True(t, tt.pieceAllDirty(1))
-	tt.pieceHashed(1, false)
+	tt.pieceHashed(1, false, nil)
 	// Dirty chunks should be cleared so we can try again.
 	require.False(t, tt.pieceAllDirty(1))
 	tt.cl.unlock()
@@ -183,9 +184,8 @@ func TestTorrentMetainfoIncompleteMetadata(t *testing.T) {
 
 	var pex PeerExtensionBits
 	pex.SetBit(pp.ExtensionBitExtended)
-	hr, ok, err := pp.Handshake(nc, &ih, [20]byte{}, pex)
+	hr, err := pp.Handshake(nc, &ih, [20]byte{}, pex)
 	require.NoError(t, err)
-	assert.True(t, ok)
 	assert.True(t, hr.PeerExtensionBits.GetBit(pp.ExtensionBitExtended))
 	assert.EqualValues(t, cl.PeerID(), hr.PeerID)
 	assert.EqualValues(t, ih, hr.Hash)

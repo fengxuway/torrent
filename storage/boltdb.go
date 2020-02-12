@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/anacrolix/missinggo/expect"
+	bolt "github.com/etcd-io/bbolt"
+
 	"github.com/anacrolix/torrent/metainfo"
-	"github.com/boltdb/bolt"
 )
 
 const (

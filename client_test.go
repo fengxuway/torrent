@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,19 +13,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anacrolix/dht"
+	"github.com/bradfitz/iter"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
+
+	"github.com/anacrolix/dht/v2"
 	_ "github.com/anacrolix/envpprof"
 	"github.com/anacrolix/missinggo"
-	"github.com/anacrolix/missinggo/filecache"
+	"github.com/anacrolix/missinggo/v2/filecache"
+
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/internal/testutil"
 	"github.com/anacrolix/torrent/iplist"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
-	"github.com/bradfitz/iter"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/time/rate"
 )
 
 func TestingConfig() *ClientConfig {
@@ -35,6 +38,16 @@ func TestingConfig() *ClientConfig {
 	cfg.DisableTrackers = true
 	cfg.NoDefaultPortForwarding = true
 	cfg.DisableAcceptRateLimiting = true
+	cfg.ListenPort = 0
+	//cfg.Debug = true
+	//cfg.Logger = cfg.Logger.WithText(func(m log.Msg) string {
+	//	t := m.Text()
+	//	m.Values(func(i interface{}) bool {
+	//		t += fmt.Sprintf("\n%[1]T: %[1]v", i)
+	//		return true
+	//	})
+	//	return t
+	//})
 	return cfg
 }
 
@@ -103,7 +116,7 @@ func TestTorrentInitialState(t *testing.T) {
 	dir, mi := testutil.GreetingTestTorrent()
 	defer os.RemoveAll(dir)
 	cl := &Client{
-		config: &ClientConfig{},
+		config: TestingConfig(),
 	}
 	cl.initLogger()
 	tor := cl.newTorrent(
@@ -163,13 +176,13 @@ func TestAddDropManyTorrents(t *testing.T) {
 	}
 }
 
-type FileCacheClientStorageFactoryParams struct {
+type fileCacheClientStorageFactoryParams struct {
 	Capacity    int64
 	SetCapacity bool
 	Wrapper     func(*filecache.Cache) storage.ClientImpl
 }
 
-func NewFileCacheClientStorageFactory(ps FileCacheClientStorageFactoryParams) storageFactory {
+func newFileCacheClientStorageFactory(ps fileCacheClientStorageFactoryParams) storageFactory {
 	return func(dataDir string) storage.ClientImpl {
 		fc, err := filecache.NewCache(dataDir)
 		if err != nil {
@@ -187,7 +200,7 @@ type storageFactory func(string) storage.ClientImpl
 func TestClientTransferDefault(t *testing.T) {
 	testClientTransfer(t, testClientTransferParams{
 		ExportClientStatus: true,
-		LeecherStorage: NewFileCacheClientStorageFactory(FileCacheClientStorageFactoryParams{
+		LeecherStorage: newFileCacheClientStorageFactory(fileCacheClientStorageFactoryParams{
 			Wrapper: fileCachePieceResourceStorage,
 		}),
 	})
@@ -215,53 +228,81 @@ func fileCachePieceResourceStorage(fc *filecache.Cache) storage.ClientImpl {
 	return storage.NewResourcePieces(fc.AsResourceProvider())
 }
 
-func TestClientTransferSmallCache(t *testing.T) {
+func testClientTransferSmallCache(t *testing.T, setReadahead bool, readahead int64) {
 	testClientTransfer(t, testClientTransferParams{
-		LeecherStorage: NewFileCacheClientStorageFactory(FileCacheClientStorageFactoryParams{
+		LeecherStorage: newFileCacheClientStorageFactory(fileCacheClientStorageFactoryParams{
 			SetCapacity: true,
 			// Going below the piece length means it can't complete a piece so
 			// that it can be hashed.
 			Capacity: 5,
 			Wrapper:  fileCachePieceResourceStorage,
 		}),
-		SetReadahead: true,
+		SetReadahead: setReadahead,
 		// Can't readahead too far or the cache will thrash and drop data we
 		// thought we had.
-		Readahead:          0,
+		Readahead:          readahead,
 		ExportClientStatus: true,
 	})
 }
 
+func TestClientTransferSmallCachePieceSizedReadahead(t *testing.T) {
+	testClientTransferSmallCache(t, true, 5)
+}
+
+func TestClientTransferSmallCacheLargeReadahead(t *testing.T) {
+	testClientTransferSmallCache(t, true, 15)
+}
+
+func TestClientTransferSmallCacheDefaultReadahead(t *testing.T) {
+	testClientTransferSmallCache(t, false, -1)
+}
+
 func TestClientTransferVarious(t *testing.T) {
 	// Leecher storage
-	for _, ls := range []storageFactory{
-		NewFileCacheClientStorageFactory(FileCacheClientStorageFactoryParams{
+	for _, ls := range []struct {
+		name string
+		f    storageFactory
+	}{
+		{"Filecache", newFileCacheClientStorageFactory(fileCacheClientStorageFactoryParams{
 			Wrapper: fileCachePieceResourceStorage,
-		}),
-		storage.NewBoltDB,
+		})},
+		{"Boltdb", storage.NewBoltDB},
 	} {
-		// Seeder storage
-		for _, ss := range []func(string) storage.ClientImpl{
-			storage.NewFile,
-			storage.NewMMap,
-		} {
-			for _, responsive := range []bool{false, true} {
-				testClientTransfer(t, testClientTransferParams{
-					Responsive:     responsive,
-					SeederStorage:  ss,
-					LeecherStorage: ls,
+		t.Run(fmt.Sprintf("LeecherStorage=%s", ls.name), func(t *testing.T) {
+			// Seeder storage
+			for _, ss := range []struct {
+				name string
+				f    func(string) storage.ClientImpl
+			}{
+				{"File", storage.NewFile},
+				{"Mmap", storage.NewMMap},
+			} {
+				t.Run(fmt.Sprintf("%sSeederStorage", ss.name), func(t *testing.T) {
+					for _, responsive := range []bool{false, true} {
+						t.Run(fmt.Sprintf("Responsive=%v", responsive), func(t *testing.T) {
+							t.Run("NoReadahead", func(t *testing.T) {
+								testClientTransfer(t, testClientTransferParams{
+									Responsive:     responsive,
+									SeederStorage:  ss.f,
+									LeecherStorage: ls.f,
+								})
+							})
+							for _, readahead := range []int64{-1, 0, 1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 20} {
+								t.Run(fmt.Sprintf("readahead=%v", readahead), func(t *testing.T) {
+									testClientTransfer(t, testClientTransferParams{
+										SeederStorage:  ss.f,
+										Responsive:     responsive,
+										SetReadahead:   true,
+										Readahead:      readahead,
+										LeecherStorage: ls.f,
+									})
+								})
+							}
+						})
+					}
 				})
-				for _, readahead := range []int64{-1, 0, 1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 20} {
-					testClientTransfer(t, testClientTransferParams{
-						SeederStorage:  ss,
-						Responsive:     responsive,
-						SetReadahead:   true,
-						Readahead:      readahead,
-						LeecherStorage: ls,
-					})
-				}
 			}
-		}
+		})
 	}
 }
 
@@ -274,6 +315,16 @@ type testClientTransferParams struct {
 	SeederStorage              func(string) storage.ClientImpl
 	SeederUploadRateLimiter    *rate.Limiter
 	LeecherDownloadRateLimiter *rate.Limiter
+}
+
+func logPieceStateChanges(t *Torrent) {
+	sub := t.SubscribePieceStateChanges()
+	go func() {
+		defer sub.Close()
+		for e := range sub.Values {
+			log.Printf("%p %#v", t, e)
+		}
+	}()
 }
 
 // Creates a seeder and a leecher, and ensures the data transfers when a read
@@ -319,6 +370,7 @@ func testClientTransfer(t *testing.T, ps testClientTransferParams) {
 		cfg.DownloadRateLimiter = ps.LeecherDownloadRateLimiter
 	}
 	cfg.Seed = false
+	//cfg.Debug = true
 	leecher, err := NewClient(cfg)
 	require.NoError(t, err)
 	defer leecher.Close()
@@ -332,6 +384,10 @@ func testClientTransfer(t *testing.T, ps testClientTransferParams) {
 	}())
 	require.NoError(t, err)
 	assert.True(t, new)
+
+	//// This was used when observing coalescing of piece state changes.
+	//logPieceStateChanges(leecherTorrent)
+
 	// Now do some things with leecher and seeder.
 	leecherTorrent.AddClientPeer(seeder)
 	// The Torrent should not be interested in obtaining peers, so the one we
@@ -770,7 +826,8 @@ func testDownloadCancel(t *testing.T, ps testDownloadCancelParams) {
 	}
 	cfg.DefaultStorage = storage.NewResourcePieces(fc.AsResourceProvider())
 	cfg.DataDir = leecherDataDir
-	leecher, _ := NewClient(cfg)
+	leecher, err := NewClient(cfg)
+	require.NoError(t, err)
 	defer leecher.Close()
 	defer testutil.ExportStatusWriter(leecher, "l")()
 	leecherGreeting, new, err := leecher.AddTorrentSpec(func() (ret *TorrentSpec) {
@@ -943,6 +1000,8 @@ func TestSetMaxEstablishedConn(t *testing.T) {
 	waitTotalConns(6)
 }
 
+// Creates a file containing its own name as data. Make a metainfo from that, adds it to the given
+// client, and returns a magnet link.
 func makeMagnet(t *testing.T, cl *Client, dir string, name string) string {
 	os.MkdirAll(dir, 0770)
 	file, err := os.Create(filepath.Join(dir, name))
@@ -966,22 +1025,40 @@ func makeMagnet(t *testing.T, cl *Client, dir string, name string) string {
 
 // https://github.com/anacrolix/torrent/issues/114
 func TestMultipleTorrentsWithEncryption(t *testing.T) {
+	testSeederLeecherPair(
+		t,
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.Preferred = true
+			cfg.HeaderObfuscationPolicy.RequirePreferred = true
+		},
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.RequirePreferred = false
+		},
+	)
+}
+
+// Test that the leecher can download a torrent in its entirety from the seeder. Note that the
+// seeder config is done first.
+func testSeederLeecherPair(t *testing.T, seeder func(*ClientConfig), leecher func(*ClientConfig)) {
 	cfg := TestingConfig()
-	cfg.DisableUTP = true
 	cfg.Seed = true
 	cfg.DataDir = filepath.Join(cfg.DataDir, "server")
-	cfg.ForceEncryption = true
 	os.Mkdir(cfg.DataDir, 0755)
+	seeder(cfg)
 	server, err := NewClient(cfg)
 	require.NoError(t, err)
 	defer server.Close()
 	defer testutil.ExportStatusWriter(server, "s")()
 	magnet1 := makeMagnet(t, server, cfg.DataDir, "test1")
+	// Extra torrents are added to test the seeder having to match incoming obfuscated headers
+	// against more than one torrent. See issue #114
 	makeMagnet(t, server, cfg.DataDir, "test2")
+	for i := 0; i < 100; i++ {
+		makeMagnet(t, server, cfg.DataDir, fmt.Sprintf("test%d", i+2))
+	}
 	cfg = TestingConfig()
-	cfg.DisableUTP = true
 	cfg.DataDir = filepath.Join(cfg.DataDir, "client")
-	cfg.ForceEncryption = true
+	leecher(cfg)
 	client, err := NewClient(cfg)
 	require.NoError(t, err)
 	defer client.Close()
@@ -992,6 +1069,37 @@ func TestMultipleTorrentsWithEncryption(t *testing.T) {
 	<-tr.GotInfo()
 	tr.DownloadAll()
 	client.WaitAll()
+}
+
+// This appears to be the situation with the S3 BitTorrent client.
+func TestObfuscatedHeaderFallbackSeederDisallowsLeecherPrefers(t *testing.T) {
+	// Leecher prefers obfuscation, but the seeder does not allow it.
+	testSeederLeecherPair(
+		t,
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.Preferred = false
+			cfg.HeaderObfuscationPolicy.RequirePreferred = true
+		},
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.Preferred = true
+			cfg.HeaderObfuscationPolicy.RequirePreferred = false
+		},
+	)
+}
+
+func TestObfuscatedHeaderFallbackSeederRequiresLeecherPrefersNot(t *testing.T) {
+	// Leecher prefers no obfuscation, but the seeder enforces it.
+	testSeederLeecherPair(
+		t,
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.Preferred = true
+			cfg.HeaderObfuscationPolicy.RequirePreferred = true
+		},
+		func(cfg *ClientConfig) {
+			cfg.HeaderObfuscationPolicy.Preferred = false
+			cfg.HeaderObfuscationPolicy.RequirePreferred = false
+		},
+	)
 }
 
 func TestClientAddressInUse(t *testing.T) {
@@ -1013,4 +1121,29 @@ func TestClientHasDhtServersWhenUtpDisabled(t *testing.T) {
 	require.NoError(t, err)
 	defer cl.Close()
 	assert.NotEmpty(t, cl.DhtServers())
+}
+
+func TestIssue335(t *testing.T) {
+	dir, mi := testutil.GreetingTestTorrent()
+	defer os.RemoveAll(dir)
+	cfg := TestingConfig()
+	cfg.Seed = false
+	cfg.Debug = true
+	cfg.DataDir = dir
+	comp, err := storage.NewBoltPieceCompletion(dir)
+	require.NoError(t, err)
+	defer comp.Close()
+	cfg.DefaultStorage = storage.NewMMapWithCompletion(dir, comp)
+	cl, err := NewClient(cfg)
+	require.NoError(t, err)
+	defer cl.Close()
+	tor, new, err := cl.AddTorrentSpec(TorrentSpecFromMetaInfo(mi))
+	require.NoError(t, err)
+	assert.True(t, new)
+	require.True(t, cl.WaitAll())
+	tor.Drop()
+	tor, new, err = cl.AddTorrentSpec(TorrentSpecFromMetaInfo(mi))
+	require.NoError(t, err)
+	assert.True(t, new)
+	require.True(t, cl.WaitAll())
 }

@@ -8,19 +8,19 @@ import (
 	"time"
 
 	"github.com/anacrolix/missinggo/pubsub"
+	"github.com/bradfitz/iter"
+	"github.com/stretchr/testify/require"
+
 	"github.com/anacrolix/torrent/metainfo"
 	pp "github.com/anacrolix/torrent/peer_protocol"
 	"github.com/anacrolix/torrent/storage"
-	"github.com/bradfitz/iter"
-	"github.com/stretchr/testify/require"
 )
 
 // Ensure that no race exists between sending a bitfield, and a subsequent
 // Have that would potentially alter it.
 func TestSendBitfieldThenHave(t *testing.T) {
-	r, w := io.Pipe()
 	cl := Client{
-		config: &ClientConfig{DownloadRateLimiter: unlimited},
+		config: TestingConfig(),
 	}
 	cl.initLogger()
 	c := cl.newConnection(nil, false, IpPort{}, "")
@@ -28,11 +28,12 @@ func TestSendBitfieldThenHave(t *testing.T) {
 	c.t.setInfo(&metainfo.Info{
 		Pieces: make([]byte, metainfo.HashSize*3),
 	})
+	r, w := io.Pipe()
 	c.r = r
 	c.w = w
 	go c.writer(time.Minute)
 	c.mu().Lock()
-	c.t.completedPieces.Add(1)
+	c.t._completedPieces.Add(1)
 	c.PostBitfield( /*[]bool{false, true, false}*/ )
 	c.mu().Unlock()
 	c.mu().Lock()
@@ -91,10 +92,11 @@ func BenchmarkConnectionMainReadLoop(b *testing.B) {
 			DownloadRateLimiter: unlimited,
 		},
 	}
+	cl.initLogger()
 	ts := &torrentStorage{}
 	t := &Torrent{
 		cl:                cl,
-		storage:           &storage.Torrent{ts},
+		storage:           &storage.Torrent{TorrentImpl: ts},
 		pieceStateChanges: pubsub.NewPubSub(),
 	}
 	require.NoError(b, t.setInfo(&metainfo.Info{
@@ -103,7 +105,7 @@ func BenchmarkConnectionMainReadLoop(b *testing.B) {
 		PieceLength: 1 << 20,
 	}))
 	t.setChunkSize(defaultChunkSize)
-	t.pendingPieces.Set(0, PiecePriorityNormal.BitmapPriority())
+	t._pendingPieces.Set(0, PiecePriorityNormal.BitmapPriority())
 	r, w := net.Pipe()
 	cn := cl.newConnection(r, true, IpPort{}, "")
 	cn.setTorrent(t)
@@ -129,8 +131,8 @@ func BenchmarkConnectionMainReadLoop(b *testing.B) {
 			cl.lock()
 			// The chunk must be written to storage everytime, to ensure the
 			// writeSem is unlocked.
-			t.pieces[0].dirtyChunks.Clear()
-			cn.validReceiveChunks = map[request]struct{}{newRequestFromMessage(&msg): struct{}{}}
+			t.pieces[0]._dirtyChunks.Clear()
+			cn.validReceiveChunks = map[request]struct{}{newRequestFromMessage(&msg): {}}
 			cl.unlock()
 			n, err := w.Write(wb)
 			require.NoError(b, err)
@@ -139,5 +141,5 @@ func BenchmarkConnectionMainReadLoop(b *testing.B) {
 		}
 	}()
 	require.NoError(b, <-mrlErr)
-	require.EqualValues(b, b.N, cn.stats.ChunksReadUseful.Int64())
+	require.EqualValues(b, b.N, cn._stats.ChunksReadUseful.Int64())
 }

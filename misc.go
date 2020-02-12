@@ -4,10 +4,11 @@ import (
 	"errors"
 	"net"
 
-	"github.com/anacrolix/missinggo"
+	"github.com/anacrolix/missinggo/v2"
+	"golang.org/x/time/rate"
+
 	"github.com/anacrolix/torrent/metainfo"
 	pp "github.com/anacrolix/torrent/peer_protocol"
-	"golang.org/x/time/rate"
 )
 
 type chunkSpec struct {
@@ -106,7 +107,7 @@ func chunkIndexSpec(index pp.Integer, pieceLength, chunkSize pp.Integer) chunkSp
 }
 
 func connLessTrusted(l, r *connection) bool {
-	return l.netGoodPiecesDirtied() < r.netGoodPiecesDirtied()
+	return l.trust().Less(r.trust())
 }
 
 func connIsIpv6(nc interface {

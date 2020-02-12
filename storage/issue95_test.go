@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/anacrolix/missinggo/resource"
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/anacrolix/missinggo/v2/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 // Two different torrents opened from the same storage. Closing one should not

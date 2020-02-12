@@ -11,8 +11,9 @@ import (
 
 	"github.com/anacrolix/envpprof"
 	"github.com/anacrolix/tagflag"
-	"github.com/anacrolix/torrent/metainfo"
 	"github.com/bradfitz/iter"
+
+	"github.com/anacrolix/torrent/metainfo"
 )
 
 var flags struct {
@@ -47,7 +48,7 @@ func processReader(r io.Reader) error {
 		"UrlList":      metainfo.UrlList,
 	}
 	if flags.Files {
-		d["Files"] = info.Files
+		d["Files"] = info.UpvertedFiles()
 	}
 	if flags.PieceHashes {
 		d["PieceHashes"] = func() (ret []string) {

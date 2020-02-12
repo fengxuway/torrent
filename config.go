@@ -6,13 +6,17 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/anacrolix/dht"
+	"github.com/anacrolix/dht/v2"
+	"github.com/anacrolix/dht/v2/krpc"
+	"github.com/anacrolix/log"
 	"github.com/anacrolix/missinggo"
-	"github.com/anacrolix/missinggo/conntrack"
 	"github.com/anacrolix/missinggo/expect"
-	"github.com/anacrolix/torrent/iplist"
-	"github.com/anacrolix/torrent/storage"
+	"github.com/anacrolix/missinggo/v2/conntrack"
 	"golang.org/x/time/rate"
+
+	"github.com/anacrolix/torrent/iplist"
+	"github.com/anacrolix/torrent/mse"
+	"github.com/anacrolix/torrent/storage"
 )
 
 var DefaultHTTPUserAgent = "Go-Torrent/1.0"
@@ -28,6 +32,7 @@ type ClientConfig struct {
 	ListenHost              func(network string) string
 	ListenPort              int
 	NoDefaultPortForwarding bool
+	UpnpID                  string
 	// Don't announce to trackers. This only leaves DHT to discover peers.
 	DisableTrackers bool `long:"disable-trackers"`
 	DisablePEX      bool `long:"disable-pex"`
@@ -66,7 +71,11 @@ type ClientConfig struct {
 	// used.
 	DefaultStorage storage.ClientImpl
 
-	EncryptionPolicy
+	HeaderObfuscationPolicy HeaderObfuscationPolicy
+	// The crypto methods to offer when initiating connections with header obfuscation.
+	CryptoProvides mse.CryptoMethod
+	// Chooses the crypto method to use when receiving connections with header obfuscation.
+	CryptoSelector mse.CryptoSelector
 
 	// Sets usage of Socks5 Proxy. Authentication should be included in the url if needed.
 	// Examples: socks5://demo:demo@192.168.99.100:1080
@@ -78,7 +87,8 @@ type ClientConfig struct {
 	DisableIPv4      bool
 	DisableIPv4Peers bool
 	// Perform logging and any other behaviour that will help debug.
-	Debug bool `help:"enable debugging"`
+	Debug  bool `help:"enable debugging"`
+	Logger log.Logger
 
 	// HTTPProxy defines proxy for HTTP requests.
 	// Format: func(*Request) (*url.URL, error),
@@ -124,6 +134,11 @@ type ClientConfig struct {
 	dropDuplicatePeerIds bool
 
 	ConnTracker *conntrack.Instance
+
+	// OnQuery hook func
+	DHTOnQuery func(query *krpc.Msg, source net.Addr) (propagate bool)
+
+	DefaultRequestStrategy RequestStrategyMaker
 }
 
 func (cfg *ClientConfig) SetListenAddr(addr string) *ClientConfig {
@@ -139,6 +154,7 @@ func NewDefaultClientConfig() *ClientConfig {
 		HTTPUserAgent:                  DefaultHTTPUserAgent,
 		ExtendedHandshakeClientVersion: "go.torrent dev 20181121",
 		Bep20:                          "-GT0002-",
+		UpnpID:                         "anacrolix/torrent",
 		NominalDialTimeout:             20 * time.Second,
 		MinDialTimeout:                 3 * time.Second,
 		EstablishedConnsPerTorrent:     50,
@@ -151,14 +167,24 @@ func NewDefaultClientConfig() *ClientConfig {
 		UploadRateLimiter:              unlimited,
 		DownloadRateLimiter:            unlimited,
 		ConnTracker:                    conntrack.NewInstance(),
+		DisableAcceptRateLimiting:      true,
+		HeaderObfuscationPolicy: HeaderObfuscationPolicy{
+			Preferred:        true,
+			RequirePreferred: false,
+		},
+		CryptoSelector: mse.DefaultCryptoSelector,
+		CryptoProvides: mse.AllSupportedCrypto,
+		ListenPort:     42069,
+		Logger:         log.Default,
+
+		DefaultRequestStrategy: RequestStrategyDuplicateRequestTimeout(5 * time.Second),
 	}
-	cc.ConnTracker.SetNoMaxEntries()
-	cc.ConnTracker.Timeout = func(conntrack.Entry) time.Duration { return 0 }
+	//cc.ConnTracker.SetNoMaxEntries()
+	//cc.ConnTracker.Timeout = func(conntrack.Entry) time.Duration { return 0 }
 	return cc
 }
 
-type EncryptionPolicy struct {
-	DisableEncryption  bool
-	ForceEncryption    bool // Don't allow unobfuscated connections.
-	PreferNoEncryption bool
+type HeaderObfuscationPolicy struct {
+	RequirePreferred bool // Whether the value of Preferred is a strict requirement.
+	Preferred        bool // Whether header obfuscation is preferred.
 }

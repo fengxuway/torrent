@@ -17,12 +17,13 @@ import (
 	fusefs "bazil.org/fuse/fs"
 	_ "github.com/anacrolix/envpprof"
 	"github.com/anacrolix/missinggo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/internal/testutil"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -169,6 +170,7 @@ func TestDownloadOnDemand(t *testing.T) {
 	cfg.DisableTrackers = true
 	cfg.NoDHT = true
 	cfg.Seed = true
+	cfg.ListenPort = 0
 	cfg.ListenHost = torrent.LoopbackListenHost
 	seeder, err := torrent.NewClient(cfg)
 	require.NoError(t, err)
@@ -189,6 +191,7 @@ func TestDownloadOnDemand(t *testing.T) {
 	cfg.DisableTCP = true
 	cfg.DefaultStorage = storage.NewMMap(filepath.Join(layout.BaseDir, "download"))
 	cfg.ListenHost = torrent.LoopbackListenHost
+	cfg.ListenPort = 0
 	leecher, err := torrent.NewClient(cfg)
 	require.NoError(t, err)
 	testutil.ExportStatusWriter(leecher, "l")()
